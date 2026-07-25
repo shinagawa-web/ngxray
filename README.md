@@ -48,11 +48,19 @@ kernel actually does — extends naturally to other blind spots:
 - **TIME_WAIT accumulation** — surface sockets piling up in TIME_WAIT on the
   nginx→upstream path, the real signal that keepalive isn't working despite being
   configured.
+- **Upstream keepalive reuse ratio** — how often nginx opens a fresh connection
+  to the upstream versus reusing one from the pool, measured directly instead of
+  inferred from the TIME_WAIT symptom. Tells you whether the `keepalive` you
+  configured is actually taking effect.
 - **Slow client detection** — identify connections where nginx is blocked on
   `write()` to a slow client, giving you data to justify tightening
   `send_timeout`.
 - **FD exhaustion early warning** — show file descriptor usage trending toward
   the process ulimit, before it becomes a wave of 502s.
+- **Accept-queue overflow** — connections the kernel drops before nginx ever
+  `accept()`s them: they never reach the access log at all, so a spike here is
+  invisible from userspace. The evidence for tuning `listen ... backlog` and
+  `net.core.somaxconn`.
 - **Per-upstream latency breakdown** — real connect time and time-to-first-byte
   per upstream server, not the aggregate your access log gives you.
 
