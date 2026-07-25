@@ -67,6 +67,36 @@ kernel actually does — extends naturally to other blind spots:
 The theme is the same throughout: give you the evidence to change a directive
 with confidence, instead of tuning by instinct.
 
+## Correlation layer
+
+ngxray doesn't try to re-derive everything from the kernel. nginx already writes
+access and error logs, and for what those logs show well — status codes, request
+URIs, the numbers nginx believes about itself — that's the right source. Rebuilding
+them in eBPF would be a lot of effort to end up with a worse copy of what's already
+on disk.
+
+eBPF is for the other side: what the kernel *actually did*. The value shows up at
+the seam between the two. ngxray reads the existing logs (read-only — never a
+`log_format` change, never a reload) and joins them against the kernel-side view,
+so you see the delta instead of two disconnected numbers:
+
+- the access log says `$upstream_connect_time` was 5ms; the kernel says the connect
+  took 200ms once TCP retransmits are counted.
+- nginx logged a clean `200`; the kernel saw the response spend most of its time
+  blocked on a `write()` to a slow client.
+- the log shows a request served; the kernel shows which worker generation, and a
+  reused or freshly opened upstream socket, served it.
+
+That seam is the whole job — deliberately. ngxray is not a log aggregator and won't
+compete with one: it leaves to the logs what the logs already do, and owns only the
+contact point where config intent and kernel reality can finally be compared.
+Without that join, every finding stays half a picture and the fix stays a guess.
+
+The hard part is the correlation key — matching a kernel socket (4-tuple, PID,
+timestamps) to a log line (client/upstream addresses, request), across keepalive
+(many requests per connection) and HTTP/2 multiplexing. Getting that join right is
+the actual work.
+
 ## Status
 
 Early / design stage. **Not usable yet.**
