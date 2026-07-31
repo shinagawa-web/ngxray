@@ -5,7 +5,12 @@ import (
 )
 
 type Config struct {
+	Report  ReportConfig  `toml:"report"`
 	Workers WorkersConfig `toml:"workers"`
+}
+
+type ReportConfig struct {
+	Days int `toml:"days"` // 0 = all
 }
 
 type WorkersConfig struct {
@@ -17,6 +22,9 @@ type WorkersConfig struct {
 
 func defaults() Config {
 	return Config{
+		Report: ReportConfig{
+			Days: 0,
+		},
 		Workers: WorkersConfig{
 			Enabled:  true,
 			PIDFile:  "/var/run/nginx.pid",

@@ -9,6 +9,9 @@ func TestLoadFullConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+	if cfg.Report.Days != 14 {
+		t.Errorf("report.days: got %d, want 14", cfg.Report.Days)
+	}
 	w := cfg.Workers
 	if !w.Enabled {
 		t.Error("enabled: got false, want true")
@@ -23,6 +26,7 @@ func TestLoadFullConfig(t *testing.T) {
 		t.Errorf("output: got %q, want /tmp/workers.ndjson", w.Output)
 	}
 }
+
 
 func TestLoadPartialConfigUsesDefaults(t *testing.T) {
 	cfg, err := Load("testdata/partial.toml")
