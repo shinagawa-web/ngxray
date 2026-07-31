@@ -222,3 +222,231 @@ func TestReadCounts_Pct(t *testing.T) {
 		t.Errorf("Pct: got %.2f, want 10.00", got)
 	}
 }
+
+// --- Pct edge case ---
+
+func TestPct_ZeroFDLimit(t *testing.T) {
+	c := Counts{FDLimit: 0, FDCount: 10}
+	if c.Pct() != 0 {
+		t.Errorf("Pct with zero limit: got %.2f, want 0", c.Pct())
+	}
+}
+
+// --- ReadCounts error paths ---
+
+func TestReadCounts_MissingLimitsFile(t *testing.T) {
+	root := t.TempDir()
+	// No limits file → readFDLimit returns ErrNotExist
+	_, err := ReadCounts(root, 500)
+	if err == nil {
+		t.Error("expected error for missing limits file")
+	}
+}
+
+func TestReadCounts_ReadSocketTableError(t *testing.T) {
+	root := t.TempDir()
+	pid := 501
+	writeLimits(t, root, pid, 1024, 4096)
+	// net/tcp as a directory → scanner.Err() returns EISDIR (not ErrNotExist)
+	netDir := filepath.Join(root, strconv.Itoa(pid), "net")
+	if err := os.MkdirAll(filepath.Join(netDir, "tcp"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ReadCounts(root, pid)
+	if err == nil {
+		t.Error("expected error from readSocketTable")
+	}
+}
+
+func TestReadCounts_MissingFDDir(t *testing.T) {
+	root := t.TempDir()
+	pid := 502
+	writeLimits(t, root, pid, 1024, 4096)
+	writeNetTCP(t, root, pid, nil)
+	// No fd/ directory → os.ReadDir fails
+	_, err := ReadCounts(root, pid)
+	if err == nil {
+		t.Error("expected error for missing fd dir")
+	}
+}
+
+func TestReadCounts_ReadlinkSkipsNonSymlink(t *testing.T) {
+	root := t.TempDir()
+	pid := 503
+	writeLimits(t, root, pid, 1024, 4096)
+	writeNetTCP(t, root, pid, nil)
+	fdDir := filepath.Join(root, strconv.Itoa(pid), "fd")
+	os.MkdirAll(fdDir, 0755)
+	// Regular file instead of symlink → Readlink fails → skip (not counted)
+	os.WriteFile(filepath.Join(fdDir, "0"), []byte(""), 0644)
+
+	counts, err := ReadCounts(root, pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.FDCount != 0 {
+		t.Errorf("FDCount: got %d, want 0 (non-symlink skipped)", counts.FDCount)
+	}
+}
+
+func TestReadCounts_UnknownSocketInode(t *testing.T) {
+	root := t.TempDir()
+	pid := 504
+	writeLimits(t, root, pid, 1024, 4096)
+	writeNetTCP(t, root, pid, nil) // empty tcp table
+	// Socket inode not in tcp table → Other
+	addFDSymlink(t, root, pid, 3, "socket:[999999]")
+
+	counts, err := ReadCounts(root, pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.Other != 1 {
+		t.Errorf("Other: got %d, want 1 (unknown socket inode)", counts.Other)
+	}
+	if counts.FDCount != 1 {
+		t.Errorf("FDCount: got %d, want 1", counts.FDCount)
+	}
+}
+
+// --- readFDLimit error paths ---
+
+func TestReadFDLimit_FileNotFound(t *testing.T) {
+	_, err := readFDLimit("/nonexistent", 999)
+	if err == nil {
+		t.Error("expected error for missing limits file")
+	}
+}
+
+func TestReadFDLimit_TooFewFields(t *testing.T) {
+	root := t.TempDir()
+	pid := 600
+	// "Max open files" line but no value columns
+	content := "Limit                     Soft Limit           Hard Limit           Units\n" +
+		"Max open files\n"
+	path := filepath.Join(root, strconv.Itoa(pid), "limits")
+	os.MkdirAll(filepath.Dir(path), 0755)
+	os.WriteFile(path, []byte(content), 0644)
+	_, err := readFDLimit(root, pid)
+	if err == nil {
+		t.Error("expected error for too-few-field limits line")
+	}
+}
+
+func TestReadFDLimit_BadNumber(t *testing.T) {
+	root := t.TempDir()
+	pid := 601
+	content := "Limit                     Soft Limit           Hard Limit           Units\n" +
+		"Max open files            notanumber           4096                 files\n"
+	path := filepath.Join(root, strconv.Itoa(pid), "limits")
+	os.MkdirAll(filepath.Dir(path), 0755)
+	os.WriteFile(path, []byte(content), 0644)
+	_, err := readFDLimit(root, pid)
+	if err == nil {
+		t.Error("expected error for non-numeric soft limit")
+	}
+}
+
+func TestReadFDLimit_NoMaxOpenFiles(t *testing.T) {
+	root := t.TempDir()
+	pid := 602
+	content := "Limit                     Soft Limit           Hard Limit           Units\n" +
+		"Max cpu time              unlimited            unlimited            seconds\n"
+	path := filepath.Join(root, strconv.Itoa(pid), "limits")
+	os.MkdirAll(filepath.Dir(path), 0755)
+	os.WriteFile(path, []byte(content), 0644)
+	_, err := readFDLimit(root, pid)
+	if err == nil {
+		t.Error("expected error when Max open files not present")
+	}
+}
+
+// --- readSocketTable error path ---
+
+func TestReadSocketTable_TCPIsDirectory(t *testing.T) {
+	root := t.TempDir()
+	pid := 700
+	netDir := filepath.Join(root, strconv.Itoa(pid), "net")
+	// Create net/tcp as a directory: os.Open succeeds but Read returns EISDIR
+	if err := os.MkdirAll(filepath.Join(netDir, "tcp"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := readSocketTable(root, pid)
+	if err == nil {
+		t.Error("expected error when net/tcp is a directory")
+	}
+}
+
+// --- parseNetTCP skip paths ---
+
+func TestParseNetTCP_SkipsBadEntries(t *testing.T) {
+	root := t.TempDir()
+	pid := 800
+	netDir := filepath.Join(root, strconv.Itoa(pid), "net")
+	os.MkdirAll(netDir, 0755)
+
+	content := "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n" +
+		// too few fields → continue
+		"  0: BADDATA\n" +
+		// bad hex port → continue
+		"  1: 00000000:ZZZZ 00000000:0000 01 00000000:00000000 00:00000000 00000000 0 0 100 1\n" +
+		// state overflow (> uint8) → continue
+		"  2: 00000000:0050 00000000:0000 FFFFF 00000000:00000000 00:00000000 00000000 0 0 101 1\n" +
+		// bad inode (non-numeric) → continue
+		"  3: 00000000:0050 00000000:0000 01 00000000:00000000 00:00000000 00000000 0 0 notanumber 1\n" +
+		// valid LISTEN on port 80, inode 200
+		"  4: 00000000:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 200 1\n"
+
+	os.WriteFile(filepath.Join(netDir, "tcp"), []byte(content), 0644)
+
+	listenPorts := map[uint16]bool{}
+	inodeInfo := map[uint64]socketInfo{}
+	if err := parseNetTCP(filepath.Join(netDir, "tcp"), listenPorts, inodeInfo); err != nil {
+		t.Fatalf("parseNetTCP: %v", err)
+	}
+	if !listenPorts[80] {
+		t.Error("expected port 80 in listenPorts from valid entry")
+	}
+	if len(inodeInfo) != 1 {
+		t.Errorf("expected 1 inode entry (only valid line), got %d", len(inodeInfo))
+	}
+}
+
+// --- parseHexPort error paths ---
+
+func TestParseHexPort_BadFormat(t *testing.T) {
+	_, err := parseHexPort("nocolon")
+	if err == nil {
+		t.Error("expected error for missing colon in addr field")
+	}
+}
+
+func TestParseHexPort_BadHex(t *testing.T) {
+	_, err := parseHexPort("00000000:ZZZZ")
+	if err == nil {
+		t.Error("expected error for non-hex port value")
+	}
+}
+
+// --- parseSocketInode error path ---
+
+func TestParseSocketInode_BadNumber(t *testing.T) {
+	n, ok := parseSocketInode("socket:[notanumber]")
+	if ok {
+		t.Errorf("expected false for non-numeric inode, got true n=%d", n)
+	}
+}
+
+func TestReadFDLimit_ScannerError(t *testing.T) {
+	root := t.TempDir()
+	pid := 700
+	path := filepath.Join(root, strconv.Itoa(pid), "limits")
+	os.MkdirAll(filepath.Dir(path), 0755)
+	// A line longer than bufio.MaxScanTokenSize (64KB) triggers scanner.Err() = bufio.ErrTooLong
+	longLine := strings.Repeat("x", 64*1024+1) + "\n"
+	os.WriteFile(path, []byte(longLine), 0644)
+	_, err := readFDLimit(root, pid)
+	if err == nil {
+		t.Error("expected scanner error for oversized line")
+	}
+}

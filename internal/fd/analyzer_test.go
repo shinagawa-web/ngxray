@@ -3,6 +3,8 @@ package fd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -175,5 +177,98 @@ func TestAnalyze_SkipCorruptLines(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "worker 101") {
 		t.Errorf("expected valid snapshot to still be reported:\n%s", out.String())
+	}
+}
+
+func TestAnalyze_DecreasingFDCount(t *testing.T) {
+	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	input := encodeSnapshots(t,
+		makeSnapshot(101, 500, 1000, t0),
+		makeSnapshot(101, 400, 1000, t0.Add(60*time.Minute)),
+	)
+	var out bytes.Buffer
+	if _, err := Analyze(input, time.Time{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	result := out.String()
+	if !strings.Contains(result, "FDs/min") {
+		t.Errorf("expected rate in output for decreasing FDs:\n%s", result)
+	}
+	if strings.Contains(result, "projected exhaustion") {
+		t.Errorf("unexpected exhaustion projection for decreasing FDs:\n%s", result)
+	}
+}
+
+func TestAnalyze_ZeroFDCount_NoGuidance(t *testing.T) {
+	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	snap := Snapshot{Ts: t0, Event: "fd_snapshot", WorkerPID: 101, FDCount: 0, FDLimit: 1000}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(snap)
+	var out bytes.Buffer
+	if _, err := Analyze(&buf, time.Time{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "→") {
+		t.Errorf("expected no guidance for FDCount=0:\n%s", out.String())
+	}
+}
+
+func TestAnalyze_UpstreamSocketGuidance(t *testing.T) {
+	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	snap := Snapshot{
+		Ts:              t0,
+		Event:           "fd_snapshot",
+		WorkerPID:       101,
+		FDCount:         100,
+		FDLimit:         1000,
+		Pct:             10,
+		UpstreamSockets: 80,
+		Other:           20,
+	}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(snap)
+	var out bytes.Buffer
+	if _, err := Analyze(&buf, time.Time{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "upstream sockets dominant") {
+		t.Errorf("expected upstream guidance:\n%s", out.String())
+	}
+}
+
+func TestFDRate_SameTimestamp(t *testing.T) {
+	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	snaps := []Snapshot{
+		{Ts: t0, FDCount: 100},
+		{Ts: t0, FDCount: 200},
+	}
+	if rate := fdRate(snaps); rate != 0 {
+		t.Errorf("fdRate with same timestamp: got %.2f, want 0", rate)
+	}
+}
+
+func TestAnalyze_WrongEvent(t *testing.T) {
+	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	snap := Snapshot{Ts: t0, Event: "workers_snapshot", WorkerPID: 101, FDCount: 100, FDLimit: 1000, Pct: 10}
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(snap)
+	var out bytes.Buffer
+	if _, err := Analyze(&buf, time.Time{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Len() > 0 {
+		t.Errorf("expected no output for wrong event type, got:\n%s", out.String())
+	}
+}
+
+type errReader struct{ err error }
+
+func (r *errReader) Read(p []byte) (int, error) { return 0, r.err }
+
+func TestAnalyze_ScannerError(t *testing.T) {
+	r := &errReader{err: errors.New("read failed")}
+	_, err := Analyze(r, time.Time{}, io.Discard)
+	if err == nil {
+		t.Error("expected scanner error to be propagated")
 	}
 }

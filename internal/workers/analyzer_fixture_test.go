@@ -2,6 +2,7 @@ package workers
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -93,5 +94,42 @@ func TestAnalyzeCutoffFilter(t *testing.T) {
 	// Confirm the early 2025 snapshot did not trigger a false detection
 	if strings.Count(got, "reload detected") > 1 {
 		t.Errorf("expected exactly 1 reload, got:\n%s", got)
+	}
+}
+
+func TestAnalyze_SkipCorruptLine(t *testing.T) {
+	boot := time.Unix(1_000_000, 0).UTC()
+	var input bytes.Buffer
+	input.WriteString("not json at all\n")
+	snap := Snapshot{Ts: boot, Event: "workers_snapshot", Workers: []Worker{{PID: 10, StartedAt: boot}}}
+	json.NewEncoder(&input).Encode(snap)
+
+	var out bytes.Buffer
+	skipped, err := Analyze(&input, time.Time{}, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped != 1 {
+		t.Errorf("skipped: got %d, want 1", skipped)
+	}
+}
+
+func TestAnalyze_SkipWrongEvent(t *testing.T) {
+	boot := time.Unix(1_000_000, 0).UTC()
+	var input bytes.Buffer
+	// Event type not "workers_snapshot" → skipped via continue (not counted in skipped)
+	wrong := Snapshot{Ts: boot, Event: "fd_snapshot", Workers: []Worker{{PID: 10, StartedAt: boot}}}
+	json.NewEncoder(&input).Encode(wrong)
+	valid := Snapshot{Ts: boot.Add(time.Minute), Event: "workers_snapshot", Workers: []Worker{{PID: 10, StartedAt: boot}}}
+	json.NewEncoder(&input).Encode(valid)
+
+	var out bytes.Buffer
+	skipped, err := Analyze(&input, time.Time{}, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Wrong event is not a parse error → skipped stays 0
+	if skipped != 0 {
+		t.Errorf("skipped: got %d, want 0", skipped)
 	}
 }
