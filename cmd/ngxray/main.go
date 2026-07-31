@@ -99,7 +99,7 @@ func runReport(args []string) {
 	}
 
 	if cfg.Report.Days == 0 {
-		return
+		log.Fatal("report.days must be greater than 0: set the number of days to look back in config")
 	}
 	cutoff := time.Now().AddDate(0, 0, -cfg.Report.Days)
 
