@@ -61,8 +61,41 @@ kernel actually does — extends naturally to other blind spots:
   `accept()`s them: they never reach the access log at all, so a spike here is
   invisible from userspace. The evidence for tuning `listen ... backlog` and
   `net.core.somaxconn`.
+
 The theme is the same throughout: give you the evidence to change a directive
 with confidence, instead of tuning by instinct.
+
+## How the features connect
+
+The features are designed to work as a diagnostic chain, not just as independent measurements.
+
+**FD exhaustion is the entry point.** When a worker's file descriptor count is climbing, the breakdown tells you where to look next:
+
+- **Client sockets dominant** → slow clients are holding connections open. See slow client detection for per-connection blocked time and a basis for setting `send_timeout`.
+- **Upstream sockets dominant** → nginx is not reusing upstream connections. Check TIME_WAIT accumulation for confirmation, then keepalive reuse ratio for the exact breakdown.
+- **Growing after a reload** → old workers are still alive and holding connections. See worker generations for how long they've been lingering.
+
+**The upstream-side chain:**
+
+```
+connect latency (high p99 + retransmits)
+  → upstream is dropping SYNs
+  → keepalive would reduce new connection frequency
+      → TIME_WAIT accumulation (is keepalive actually working?)
+          → keepalive reuse ratio (by how much?)
+```
+
+**The client-side chain:**
+
+```
+slow client detection (workers blocked on write)
+  → workers can't accept new connections quickly
+      → accept-queue drain time rises
+  → client sockets pile up
+      → FD exhaustion
+```
+
+**Worker generations** sits across both chains: after a reload, old workers holding long-lived connections inflate FD counts and mask the true state of the system until they drain.
 
 ## Correlation layer
 
