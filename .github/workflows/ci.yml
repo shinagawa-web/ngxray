@@ -16,9 +16,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Install eBPF toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang llvm libbpf-dev linux-libc-dev
+      - name: Generate BPF bindings
+        run: go generate ./internal/connect/bpf/
       - run: go build ./...
       - run: go vet ./...
       - run: go test -coverprofile=coverage.txt ./...
+      - name: Remove BPF load path from coverage
+        run: grep -v -E '(internal/connect/collector_linux\.go|internal/connect/bpf/)' coverage.txt > filtered.txt && mv filtered.txt coverage.txt
       - uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac  # v5
         if: ${{ env.CODECOV_TOKEN != '' }}
         with:

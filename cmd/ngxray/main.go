@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/shinagawa-web/ngxray/internal/config"
+	"github.com/shinagawa-web/ngxray/internal/connect"
 	"github.com/shinagawa-web/ngxray/internal/fd"
 	"github.com/shinagawa-web/ngxray/internal/workers"
 )
@@ -75,7 +76,7 @@ func runCollect(ctx context.Context, args []string) {
 		return
 	}
 
-	if !cfg.Workers.Enabled && !cfg.FD.Enabled {
+	if !cfg.Workers.Enabled && !cfg.FD.Enabled && !cfg.Connect.Enabled {
 		log.Println("all collection disabled")
 		return
 	}
@@ -127,6 +128,28 @@ func runCollect(ctx context.Context, args []string) {
 			defer wg.Done()
 			defer out.Close()
 			runCollector(ctx, "fd", c.Collect, interval)
+		}()
+	}
+
+	if cfg.Connect.Enabled {
+		out, err := openAppend(cfg.Connect.Output)
+		if err != nil {
+			logFatalf("open output %s: %v", cfg.Connect.Output, err)
+			return
+		}
+		c := &connect.Collector{
+			ProcRoot: "/proc",
+			PIDFile:  cfg.Connect.PIDFile,
+			Interval: time.Duration(cfg.Connect.Interval) * time.Second,
+			Out:      out,
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer out.Close()
+			if err := c.Collect(ctx); err != nil {
+				log.Printf("connect collect: %v", err)
+			}
 		}()
 	}
 
@@ -202,6 +225,24 @@ func runReport(args []string) {
 		}
 		if skipped > 0 {
 			log.Printf("fd: skipped %d corrupt line(s)", skipped)
+		}
+	}
+
+	if cfg.Connect.Enabled {
+		f, err := os.Open(cfg.Connect.Output)
+		if err != nil {
+			logFatalf("open %s: %v", cfg.Connect.Output, err)
+			return
+		}
+		defer f.Close()
+		fmt.Println("=== upstream connect latency ===")
+		skipped, err := connect.Analyze(f, cutoff, os.Stdout)
+		if err != nil {
+			logFatalf("connect report: %v", err)
+			return
+		}
+		if skipped > 0 {
+			log.Printf("connect: skipped %d corrupt line(s)", skipped)
 		}
 	}
 }

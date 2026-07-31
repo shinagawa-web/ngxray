@@ -172,6 +172,12 @@ output   = "/nonexistent"
 enabled  = false
 interval = 60
 output   = "/nonexistent"
+
+[connect]
+enabled  = false
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent"
 `
 	cfgPath := filepath.Join(dir, "ngxray.toml")
 	os.WriteFile(cfgPath, []byte(cfg), 0644)
@@ -198,6 +204,12 @@ output   = %q
 enabled  = true
 interval = 60
 output   = %q
+
+[connect]
+enabled  = false
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent"
 `, workersFile, fdFile)
 	cfgPath := filepath.Join(dir, "ngxray.toml")
 	os.WriteFile(cfgPath, []byte(cfg), 0644)
@@ -596,6 +608,181 @@ output   = %q
 	os.WriteFile(cfgPath, []byte(cfg), 0644)
 	msg := mustPanic(t, func() { runReport([]string{"--config", cfgPath}) })
 	if !strings.Contains(msg, "fd report") {
+		t.Errorf("got %q", msg)
+	}
+}
+
+func TestRunCollect_ConnectOpenError(t *testing.T) {
+	fatalPanic(t)
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocked")
+	os.WriteFile(blocker, []byte{}, 0644)
+	cfg := fmt.Sprintf(`
+[workers]
+enabled  = false
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent"
+[fd]
+enabled  = false
+interval = 60
+output   = "/nonexistent"
+[connect]
+enabled  = true
+pid_file = "/nonexistent"
+interval = 60
+output   = %q
+`, filepath.Join(blocker, "connect.ndjson"))
+	cfgPath := filepath.Join(dir, "ngxray.toml")
+	os.WriteFile(cfgPath, []byte(cfg), 0644)
+	msg := mustPanic(t, func() { runCollect(context.Background(), []string{"--config", cfgPath}) })
+	if !strings.Contains(msg, "open output") {
+		t.Errorf("got %q", msg)
+	}
+}
+
+func TestRunCollect_ConnectEnabled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel so Collect returns quickly
+	dir := t.TempDir()
+	connectFile := filepath.Join(dir, "connect.ndjson")
+	cfg := fmt.Sprintf(`
+[workers]
+enabled  = false
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent"
+[fd]
+enabled  = false
+interval = 60
+output   = "/nonexistent"
+[connect]
+enabled  = true
+pid_file = "/nonexistent/nginx.pid"
+interval = 60
+output   = %q
+`, connectFile)
+	cfgPath := filepath.Join(dir, "ngxray.toml")
+	os.WriteFile(cfgPath, []byte(cfg), 0644)
+	// collect returns error (no BPF) or immediately on ctx cancel; either is fine
+	runCollect(ctx, []string{"--config", cfgPath})
+}
+
+func TestRunReport_ConnectSkippedLines(t *testing.T) {
+	dir := t.TempDir()
+	connectFile := filepath.Join(dir, "connect.ndjson")
+	os.WriteFile(connectFile, []byte("not json\nalso not json\n"), 0644)
+	cfg := fmt.Sprintf(`
+[report]
+days = 1
+[workers]
+enabled  = false
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent"
+[fd]
+enabled  = false
+interval = 60
+output   = "/nonexistent"
+[connect]
+enabled  = true
+pid_file = "/nonexistent"
+interval = 60
+output   = %q
+`, connectFile)
+	cfgPath := filepath.Join(dir, "ngxray.toml")
+	os.WriteFile(cfgPath, []byte(cfg), 0644)
+	runReport([]string{"--config", cfgPath}) // skipped=2 → hits log.Printf branch
+}
+
+func TestRunReport_ConnectOnly(t *testing.T) {
+	dir := t.TempDir()
+	connectFile := filepath.Join(dir, "connect.ndjson")
+	os.WriteFile(connectFile, nil, 0644)
+	cfg := fmt.Sprintf(`
+[report]
+days = 1
+[workers]
+enabled  = false
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent"
+[fd]
+enabled  = false
+interval = 60
+output   = "/nonexistent"
+[connect]
+enabled  = true
+pid_file = "/nonexistent"
+interval = 60
+output   = %q
+`, connectFile)
+	cfgPath := filepath.Join(dir, "ngxray.toml")
+	os.WriteFile(cfgPath, []byte(cfg), 0644)
+	runReport([]string{"--config", cfgPath})
+}
+
+func TestRunReport_ConnectMissingFile(t *testing.T) {
+	fatalPanic(t)
+	dir := t.TempDir()
+	cfg := `
+[report]
+days = 1
+[workers]
+enabled  = false
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent"
+[fd]
+enabled  = false
+interval = 60
+output   = "/nonexistent"
+[connect]
+enabled  = true
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent/connect.ndjson"
+`
+	cfgPath := filepath.Join(dir, "ngxray.toml")
+	os.WriteFile(cfgPath, []byte(cfg), 0644)
+	msg := mustPanic(t, func() { runReport([]string{"--config", cfgPath}) })
+	if !strings.Contains(msg, "open") {
+		t.Errorf("got %q", msg)
+	}
+}
+
+func TestRunReport_ConnectAnalyzeError(t *testing.T) {
+	fatalPanic(t)
+	dir := t.TempDir()
+	connectFile := filepath.Join(dir, "connect.ndjson")
+	longLine := make([]byte, 2<<20+1)
+	for i := range longLine {
+		longLine[i] = 'x'
+	}
+	longLine[len(longLine)-1] = '\n'
+	os.WriteFile(connectFile, longLine, 0644)
+	cfg := fmt.Sprintf(`
+[report]
+days = 1
+[workers]
+enabled  = false
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent"
+[fd]
+enabled  = false
+interval = 60
+output   = "/nonexistent"
+[connect]
+enabled  = true
+pid_file = "/nonexistent"
+interval = 60
+output   = %q
+`, connectFile)
+	cfgPath := filepath.Join(dir, "ngxray.toml")
+	os.WriteFile(cfgPath, []byte(cfg), 0644)
+	msg := mustPanic(t, func() { runReport([]string{"--config", cfgPath}) })
+	if !strings.Contains(msg, "connect report") {
 		t.Errorf("got %q", msg)
 	}
 }
