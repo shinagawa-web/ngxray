@@ -668,6 +668,33 @@ output   = %q
 	runCollect(ctx, []string{"--config", cfgPath})
 }
 
+func TestRunReport_ConnectSkippedLines(t *testing.T) {
+	dir := t.TempDir()
+	connectFile := filepath.Join(dir, "connect.ndjson")
+	os.WriteFile(connectFile, []byte("not json\nalso not json\n"), 0644)
+	cfg := fmt.Sprintf(`
+[report]
+days = 1
+[workers]
+enabled  = false
+pid_file = "/nonexistent"
+interval = 60
+output   = "/nonexistent"
+[fd]
+enabled  = false
+interval = 60
+output   = "/nonexistent"
+[connect]
+enabled  = true
+pid_file = "/nonexistent"
+interval = 60
+output   = %q
+`, connectFile)
+	cfgPath := filepath.Join(dir, "ngxray.toml")
+	os.WriteFile(cfgPath, []byte(cfg), 0644)
+	runReport([]string{"--config", cfgPath}) // skipped=2 → hits log.Printf branch
+}
+
 func TestRunReport_ConnectOnly(t *testing.T) {
 	dir := t.TempDir()
 	connectFile := filepath.Join(dir, "connect.ndjson")
