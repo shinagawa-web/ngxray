@@ -1,2 +1,3 @@
 /ngxray
 *.ndjson
+!**/testdata/*.ndjson
