@@ -11,3 +11,9 @@ output   = "/var/log/ngxray/workers.ndjson"
 enabled  = true
 interval = 60   # seconds between snapshots
 output   = "/var/log/ngxray/fd.ndjson"
+
+[connect]
+enabled  = false      # requires Linux + CAP_BPF
+pid_file = "/var/run/nginx.pid"
+interval = 60         # aggregation window in seconds
+output   = "/var/log/ngxray/connect.ndjson"

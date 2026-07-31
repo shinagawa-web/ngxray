@@ -8,6 +8,7 @@ type Config struct {
 	Report  ReportConfig  `toml:"report"`
 	Workers WorkersConfig `toml:"workers"`
 	FD      FDConfig      `toml:"fd"`
+	Connect ConnectConfig `toml:"connect"`
 }
 
 type ReportConfig struct {
@@ -27,6 +28,13 @@ type FDConfig struct {
 	Output   string `toml:"output"`
 }
 
+type ConnectConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	PIDFile  string `toml:"pid_file"`
+	Interval int    `toml:"interval"` // seconds
+	Output   string `toml:"output"`
+}
+
 func defaults() Config {
 	return Config{
 		Report: ReportConfig{
@@ -42,6 +50,12 @@ func defaults() Config {
 			Enabled:  true,
 			Interval: 60,
 			Output:   "/var/log/ngxray/fd.ndjson",
+		},
+		Connect: ConnectConfig{
+			Enabled:  false,
+			PIDFile:  "/var/run/nginx.pid",
+			Interval: 60,
+			Output:   "/var/log/ngxray/connect.ndjson",
 		},
 	}
 }
