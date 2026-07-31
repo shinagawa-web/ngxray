@@ -19,7 +19,7 @@
 struct connect_start {
 	__u64 ts_ns;
 	__u32 daddr;       // IPv4 destination address (network byte order)
-	__u16 dport;       // destination port (host byte order)
+	__u16 dport;       // destination port, host byte order (tracepoint applies ntohs)
 	__u8  retransmits;
 	__u8  _pad;
 };
@@ -128,7 +128,11 @@ int handle_inet_sock_set_state(struct inet_sock_set_state_ctx *ctx)
 			e->latency_ns  = bpf_ktime_get_ns() - cs->ts_ns;
 			e->daddr       = cs->daddr;
 			e->dport       = ctx->dport;
-			e->failed      = (ctx->newstate != TCP_ESTABLISHED) ? 1 : 0;
+			/* failed = 1 only for SYN_SENT→CLOSE; entries from other
+			 * prior states shouldn't exist in connect_map, but be
+			 * explicit to avoid mislabelling any unexpected path. */
+			e->failed      = (ctx->oldstate == TCP_SYN_SENT &&
+			                  ctx->newstate == TCP_CLOSE) ? 1 : 0;
 			e->retransmits = cs->retransmits;
 			bpf_ringbuf_submit(e, 0);
 		}
