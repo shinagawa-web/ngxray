@@ -98,10 +98,10 @@ func runReport(args []string) {
 		log.Fatalf("load config: %v", err)
 	}
 
-	var cutoff time.Time
-	if cfg.Report.Days > 0 {
-		cutoff = time.Now().AddDate(0, 0, -cfg.Report.Days)
+	if cfg.Report.Days == 0 {
+		return
 	}
+	cutoff := time.Now().AddDate(0, 0, -cfg.Report.Days)
 
 	if cfg.Workers.Enabled {
 		f, err := os.Open(cfg.Workers.Output)
