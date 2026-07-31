@@ -61,9 +61,6 @@ kernel actually does — extends naturally to other blind spots:
   `accept()`s them: they never reach the access log at all, so a spike here is
   invisible from userspace. The evidence for tuning `listen ... backlog` and
   `net.core.somaxconn`.
-- **Per-upstream latency breakdown** — real connect time and time-to-first-byte
-  per upstream server, not the aggregate your access log gives you.
-
 The theme is the same throughout: give you the evidence to change a directive
 with confidence, instead of tuning by instinct.
 
