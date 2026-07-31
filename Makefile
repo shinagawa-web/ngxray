@@ -1,7 +1,7 @@
 .PHONY: setup test
 
 setup:
-	git config core.hooksPath .githooks
+	git config --local core.hooksPath .githooks
 	chmod +x .githooks/pre-push
 	@echo "Git hooks installed."
 
