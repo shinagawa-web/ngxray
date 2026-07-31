@@ -7,10 +7,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/shinagawa-web/ngxray/internal/config"
+	"github.com/shinagawa-web/ngxray/internal/fd"
 	"github.com/shinagawa-web/ngxray/internal/workers"
 )
 
@@ -48,39 +50,69 @@ func runCollect(args []string) {
 		log.Fatalf("load config: %v", err)
 	}
 
-	if !cfg.Workers.Enabled {
-		log.Println("workers collection disabled")
-		os.Exit(0)
-	}
-
-	out, err := openAppend(cfg.Workers.Output)
-	if err != nil {
-		log.Fatalf("open output %s: %v", cfg.Workers.Output, err)
-	}
-	defer out.Close()
-
-	c := &workers.Collector{
-		ProcRoot: "/proc",
-		PIDFile:  cfg.Workers.PIDFile,
-		Out:      out,
-	}
-
-	interval := time.Duration(cfg.Workers.Interval) * time.Second
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 
-	// Collect once immediately, then on each tick
-	if err := c.Collect(); err != nil {
-		log.Printf("collect: %v", err)
+	var wg sync.WaitGroup
+
+	if cfg.Workers.Enabled {
+		out, err := openAppend(cfg.Workers.Output)
+		if err != nil {
+			log.Fatalf("open output %s: %v", cfg.Workers.Output, err)
+		}
+		c := &workers.Collector{
+			ProcRoot: "/proc",
+			PIDFile:  cfg.Workers.PIDFile,
+			Out:      out,
+		}
+		interval := time.Duration(cfg.Workers.Interval) * time.Second
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer out.Close()
+			runCollector("workers", c.Collect, interval, sig)
+		}()
 	}
+
+	if cfg.FD.Enabled {
+		out, err := openAppend(cfg.FD.Output)
+		if err != nil {
+			log.Fatalf("open output %s: %v", cfg.FD.Output, err)
+		}
+		c := &fd.Collector{
+			ProcRoot: "/proc",
+			PIDFile:  cfg.Workers.PIDFile,
+			Out:      out,
+		}
+		interval := time.Duration(cfg.FD.Interval) * time.Second
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer out.Close()
+			runCollector("fd", c.Collect, interval, sig)
+		}()
+	}
+
+	if !cfg.Workers.Enabled && !cfg.FD.Enabled {
+		log.Println("all collection disabled")
+		return
+	}
+
+	wg.Wait()
+}
+
+// runCollector runs collectFn once immediately, then on each tick, until sig.
+func runCollector(name string, collectFn func() error, interval time.Duration, sig <-chan os.Signal) {
+	if err := collectFn(); err != nil {
+		log.Printf("%s collect: %v", name, err)
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			if err := c.Collect(); err != nil {
-				log.Printf("collect: %v", err)
+			if err := collectFn(); err != nil {
+				log.Printf("%s collect: %v", name, err)
 			}
 		case <-sig:
 			return
@@ -116,6 +148,22 @@ func runReport(args []string) {
 		}
 		if skipped > 0 {
 			log.Printf("workers: skipped %d corrupt line(s)", skipped)
+		}
+	}
+
+	if cfg.FD.Enabled {
+		f, err := os.Open(cfg.FD.Output)
+		if err != nil {
+			log.Fatalf("open %s: %v", cfg.FD.Output, err)
+		}
+		defer f.Close()
+		fmt.Println("=== FD exhaustion ===")
+		skipped, err := fd.Analyze(f, cutoff, os.Stdout)
+		if err != nil {
+			log.Fatalf("fd report: %v", err)
+		}
+		if skipped > 0 {
+			log.Printf("fd: skipped %d corrupt line(s)", skipped)
 		}
 	}
 }

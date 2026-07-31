@@ -90,7 +90,7 @@ func TestEnumerateWorkers(t *testing.T) {
 	}
 	procRoot := buildProcFixture(t, 1000, []int{1001, 1002}, bootSec, ticks)
 
-	workers, err := enumerateWorkers(procRoot, 1000, bootTime, 10*time.Millisecond)
+	workers, err := EnumerateWorkers(procRoot, 1000, bootTime, 10*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
