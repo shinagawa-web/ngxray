@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 )
 
@@ -49,9 +50,16 @@ func Analyze(r io.Reader, cutoff time.Time, out io.Writer) (skipped int, err err
 		return skipped, nil
 	}
 
+	upstreams := make([]string, 0, len(byUpstream))
+	for k := range byUpstream {
+		upstreams = append(upstreams, k)
+	}
+	sort.Strings(upstreams)
+
 	fmt.Fprintf(out, "%-25s  %6s  %8s  %6s  %6s\n", "upstream", "count", "max_p99", "retx", "failed")
 	fmt.Fprintf(out, "%-25s  %6s  %8s  %6s  %6s\n", "-------", "-----", "-------", "----", "------")
-	for upstream, st := range byUpstream {
+	for _, upstream := range upstreams {
+		st := byUpstream[upstream]
 		warn := ""
 		if st.maxP99Ms >= 100 && st.retransmits > 0 {
 			warn = "  ← check upstream"

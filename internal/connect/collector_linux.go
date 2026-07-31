@@ -59,7 +59,7 @@ func (c *Collector) collect(ctx context.Context) error {
 
 	ticker := time.NewTicker(c.Interval)
 	defer ticker.Stop()
-	refreshTicker := time.NewTicker(30 * time.Second)
+	refreshTicker := time.NewTicker(workerPIDRefreshInterval)
 	defer refreshTicker.Stop()
 
 	for {
@@ -108,13 +108,38 @@ func drainRingBuf(rd *ringbuf.Reader) <-chan ConnectEvent {
 	return ch
 }
 
-// refreshWorkerPIDs reads nginx worker PIDs from /proc and upserts them
-// into the BPF worker_pids map.
+const workerPIDRefreshInterval = 30 * time.Second
+
+// refreshWorkerPIDs reads nginx worker PIDs from /proc, removes stale entries
+// from the BPF worker_pids map, and upserts the current set.
 func (c *Collector) refreshWorkerPIDs(m *ebpf.Map) error {
 	pids, err := workerPIDs(c.ProcRoot, c.PIDFile)
 	if err != nil {
 		return err
 	}
+
+	newSet := make(map[uint32]struct{}, len(pids))
+	for _, pid := range pids {
+		newSet[pid] = struct{}{}
+	}
+
+	// Collect stale keys (present in map but not in the current worker set).
+	var toDelete []uint32
+	var key uint32
+	var val uint8
+	iter := m.Iterate()
+	for iter.Next(&key, &val) {
+		if _, ok := newSet[key]; !ok {
+			toDelete = append(toDelete, key)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("iterate worker_pids: %w", err)
+	}
+	for _, k := range toDelete {
+		_ = m.Delete(k)
+	}
+
 	one := uint8(1)
 	for _, pid := range pids {
 		if err := m.Put(pid, one); err != nil {

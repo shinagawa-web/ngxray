@@ -7,7 +7,7 @@ import "time"
 type ConnectEvent struct {
 	TsNs        uint64
 	LatencyNs   uint64
-	DAddr       uint32 // IPv4 destination address, network byte order
+	DAddr       uint32 // IPv4 address as LE-packed uint32 (kernel __builtin_memcpy on LE host); use LittleEndian.PutUint32 to recover bytes
 	DPort       uint16 // destination port, host byte order
 	Failed      uint8  // 1 = did not reach ESTABLISHED
 	Retransmits uint8

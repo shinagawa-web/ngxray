@@ -7,7 +7,13 @@
 #define IPPROTO_TCP     6
 #define TCP_ESTABLISHED 1
 #define TCP_SYN_SENT    2
+#define TCP_FIN_WAIT1   4
+#define TCP_FIN_WAIT2   5
+#define TCP_TIME_WAIT   6
 #define TCP_CLOSE       7
+#define TCP_CLOSE_WAIT  8
+#define TCP_LAST_ACK    9
+#define TCP_CLOSING    11
 
 // In-flight connect state, keyed by sock* cast to u64.
 struct connect_start {
@@ -126,6 +132,17 @@ int handle_inet_sock_set_state(struct inet_sock_set_state_ctx *ctx)
 			e->retransmits = cs->retransmits;
 			bpf_ringbuf_submit(e, 0);
 		}
+		bpf_map_delete_elem(&connect_map, &skaddr);
+
+	} else if (ctx->newstate == TCP_FIN_WAIT1  ||
+	           ctx->newstate == TCP_FIN_WAIT2  ||
+	           ctx->newstate == TCP_TIME_WAIT  ||
+	           ctx->newstate == TCP_CLOSE_WAIT ||
+	           ctx->newstate == TCP_LAST_ACK   ||
+	           ctx->newstate == TCP_CLOSING) {
+		/* Teardown states that should never appear before ESTABLISHED/CLOSE
+		 * for a tracked connect, but delete defensively to prevent map
+		 * exhaustion if the kernel transitions through an unexpected path. */
 		bpf_map_delete_elem(&connect_map, &skaddr);
 	}
 	return 0;
