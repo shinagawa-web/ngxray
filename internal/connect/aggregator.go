@@ -72,10 +72,11 @@ func percentile(sorted []float64, p int) float64 {
 	return sorted[idx]
 }
 
-// upstreamKey builds a "host:port" string from a network-byte-order IPv4 address
-// and a host-byte-order port.
+// upstreamKey builds a "host:port" string from daddr.
+// On a LE kernel, __builtin_memcpy packs the network-order bytes [a,b,c,d] into
+// the uint32 as a LE integer. LittleEndian.PutUint32 recovers those original bytes.
 func upstreamKey(daddr uint32, dport uint16) string {
 	var b [4]byte
-	binary.BigEndian.PutUint32(b[:], daddr)
+	binary.LittleEndian.PutUint32(b[:], daddr)
 	return fmt.Sprintf("%s:%d", net.IP(b[:]).String(), dport)
 }

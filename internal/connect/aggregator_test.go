@@ -17,8 +17,10 @@ func makeEvent(daddr uint32, dport uint16, latencyMs float64, retransmits uint8,
 	}
 }
 
+// ipv4 constructs a DAddr value the way the BPF pipeline does:
+// __builtin_memcpy on a LE kernel packs network-order bytes as a LE uint32.
 func ipv4(a, b, c, d byte) uint32 {
-	return binary.BigEndian.Uint32([]byte{a, b, c, d})
+	return binary.LittleEndian.Uint32([]byte{a, b, c, d})
 }
 
 func TestAggregator_Basic(t *testing.T) {
