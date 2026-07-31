@@ -58,6 +58,28 @@ func TestAnalyzeLingeringWorkers(t *testing.T) {
 	}
 }
 
+func TestAnalyzeMultipleReloads(t *testing.T) {
+	// Fixture: snap1=[100,101], snap2=[100,102,103] (1st reload; 101 drains, 100 lingers),
+	// snap3=[100,102,104,105] (2nd reload; 103 drains, 100 and 102 linger),
+	// snap4=[104,105] (all old workers finally drain).
+	got := analyzeFixture(t, "multi_reload.ndjson", time.Time{})
+
+	if strings.Count(got, "reload detected") != 2 {
+		t.Errorf("expected 2 reload detections, got:\n%s", got)
+	}
+	// pid:100 lingers through both reloads
+	if !strings.Contains(got, "pid:100") {
+		t.Errorf("expected pid:100 reported as old worker, got:\n%s", got)
+	}
+	// pid:102 becomes old after the 2nd reload
+	if !strings.Contains(got, "pid:102") {
+		t.Errorf("expected pid:102 reported as old worker after 2nd reload, got:\n%s", got)
+	}
+	if !strings.Contains(got, "all old workers gone") || !strings.Contains(got, "drain took") {
+		t.Errorf("expected drain confirmation with elapsed time, got:\n%s", got)
+	}
+}
+
 func TestAnalyzeCutoffFilter(t *testing.T) {
 	// Cutoff at 2026-01-01: the 2025-06-01 snapshot is skipped.
 	// With only post-cutoff data the analyser sees one snapshot before the reload
