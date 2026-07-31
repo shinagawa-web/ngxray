@@ -90,7 +90,7 @@ func TestEnumerateWorkers(t *testing.T) {
 	}
 	procRoot := buildProcFixture(t, 1000, []int{1001, 1002}, bootSec, ticks)
 
-	workers, err := enumerateWorkers(procRoot, 1000, bootTime)
+	workers, err := enumerateWorkers(procRoot, 1000, bootTime, 10*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestAnalyzeReload(t *testing.T) {
 	if !strings.Contains(result, "pid:101") {
 		t.Errorf("expected old worker pid:101 reported, got:\n%s", result)
 	}
-	if !strings.Contains(result, "all old workers gone") {
+	if !strings.Contains(result, "all old workers gone") || !strings.Contains(result, "drain took") {
 		t.Errorf("expected drain confirmation, got:\n%s", result)
 	}
 }

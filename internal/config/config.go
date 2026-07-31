@@ -10,7 +10,7 @@ type Config struct {
 }
 
 type ReportConfig struct {
-	Days int `toml:"days"` // 0 = all
+	Days int `toml:"days"` // must be > 0
 }
 
 type WorkersConfig struct {

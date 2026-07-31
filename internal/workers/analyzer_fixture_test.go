@@ -34,7 +34,7 @@ func TestAnalyzeSingleReload(t *testing.T) {
 	if !strings.Contains(got, "reload detected") {
 		t.Errorf("expected reload detection, got:\n%s", got)
 	}
-	if !strings.Contains(got, "all old workers gone") {
+	if !strings.Contains(got, "all old workers gone") || !strings.Contains(got, "drain took") {
 		t.Errorf("expected drain confirmation, got:\n%s", got)
 	}
 	// Old workers 100 and 101 should NOT appear — they disappeared immediately
@@ -53,7 +53,7 @@ func TestAnalyzeLingeringWorkers(t *testing.T) {
 	if occurrences < 2 {
 		t.Errorf("expected pid:100 reported at least twice (lingered 2 snapshots), got %d times\n%s", occurrences, got)
 	}
-	if !strings.Contains(got, "all old workers gone") {
+	if !strings.Contains(got, "all old workers gone") || !strings.Contains(got, "drain took") {
 		t.Errorf("expected drain confirmation, got:\n%s", got)
 	}
 }

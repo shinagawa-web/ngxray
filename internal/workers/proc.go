@@ -10,7 +10,14 @@ import (
 	"time"
 )
 
-const hz = 100 // standard Linux clock ticks per second
+// userHZ is the fixed USER_HZ value exposed by the Linux kernel for /proc/[pid]/stat.
+// This is distinct from the kernel's internal CONFIG_HZ: regardless of whether the
+// kernel is built with CONFIG_HZ=100/250/1000, starttime in /proc/[pid]/stat is
+// always expressed in USER_HZ ticks, which Linux fixes at 100.
+const userHZ = 100
+
+// tickDuration is the wall-clock duration of one USER_HZ tick.
+const tickDuration = time.Second / userHZ
 
 // Worker is a single nginx worker process with its start time.
 type Worker struct {
@@ -36,6 +43,9 @@ func readBootTime(procRoot string) (time.Time, error) {
 			return time.Unix(sec, 0), nil
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return time.Time{}, fmt.Errorf("scan %s/stat: %w", procRoot, err)
+	}
 	return time.Time{}, fmt.Errorf("btime not found in %s/stat", procRoot)
 }
 
@@ -53,7 +63,9 @@ func readMasterPID(pidFile string) (int, error) {
 }
 
 // enumerateWorkers returns all processes under procRoot whose PPID matches masterPID.
-func enumerateWorkers(procRoot string, masterPID int, bootTime time.Time) ([]Worker, error) {
+// tick is the duration of one USER_HZ tick; pass tickDuration in production and
+// 10*time.Millisecond in tests to keep assertions independent of host clock config.
+func enumerateWorkers(procRoot string, masterPID int, bootTime time.Time, tick time.Duration) ([]Worker, error) {
 	entries, err := os.ReadDir(procRoot)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", procRoot, err)
@@ -76,9 +88,7 @@ func enumerateWorkers(procRoot string, masterPID int, bootTime time.Time) ([]Wor
 		if ppid != masterPID {
 			continue
 		}
-		// Divide first so the multiplication stays well within int64 range
-		// even on boxes with multi-year uptime (safe up to ~292 years at HZ=100).
-		startedAt := bootTime.Add(time.Duration(startTicks) * (time.Second / hz))
+		startedAt := bootTime.Add(time.Duration(startTicks) * tick)
 		workers = append(workers, Worker{PID: pid, StartedAt: startedAt.UTC()})
 	}
 	return workers, nil

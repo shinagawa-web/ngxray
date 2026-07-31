@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"time"
 )
 
@@ -13,6 +14,7 @@ import (
 // than cutoff are processed; pass zero to process all.
 func Analyze(r io.Reader, cutoff time.Time, out io.Writer) error {
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1MB: handles hosts with many workers
 
 	prev := map[int]Worker{}
 	var reloadAt *time.Time
@@ -21,6 +23,7 @@ func Analyze(r io.Reader, cutoff time.Time, out io.Writer) error {
 	for scanner.Scan() {
 		var s Snapshot
 		if err := json.Unmarshal(scanner.Bytes(), &s); err != nil {
+			log.Printf("workers: skipping corrupt line: %v", err)
 			continue
 		}
 		if s.Event != "workers_snapshot" {
@@ -56,7 +59,8 @@ func Analyze(r io.Reader, cutoff time.Time, out io.Writer) error {
 				}
 			}
 			if len(remaining) == 0 {
-				fmt.Fprintf(out, "all old workers gone as of %s\n", s.Ts.Format(time.RFC3339))
+				drain := s.Ts.Sub(*reloadAt).Round(time.Second)
+				fmt.Fprintf(out, "all old workers gone as of %s (drain took %s)\n", s.Ts.Format(time.RFC3339), drain)
 				reloadAt = nil
 				preReload = map[int]Worker{}
 			} else {

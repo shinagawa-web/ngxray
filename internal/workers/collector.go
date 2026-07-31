@@ -31,7 +31,7 @@ func (c *Collector) Collect() error {
 	if err != nil {
 		return err
 	}
-	workers, err := enumerateWorkers(c.ProcRoot, masterPID, bootTime)
+	workers, err := enumerateWorkers(c.ProcRoot, masterPID, bootTime, tickDuration)
 	if err != nil {
 		return err
 	}
