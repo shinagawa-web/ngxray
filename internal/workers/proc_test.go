@@ -179,7 +179,7 @@ func TestAnalyzeReload(t *testing.T) {
 	enc.Encode(s3)
 
 	var out bytes.Buffer
-	if err := Analyze(&input, time.Time{}, &out); err != nil {
+	if _, err := Analyze(&input, time.Time{}, &out); err != nil {
 		t.Fatal(err)
 	}
 	result := out.String()

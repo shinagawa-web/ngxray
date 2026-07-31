@@ -16,7 +16,7 @@ func analyzeFixture(t *testing.T, name string, cutoff time.Time) string {
 	}
 	defer f.Close()
 	var out bytes.Buffer
-	if err := Analyze(f, cutoff, &out); err != nil {
+	if _, err := Analyze(f, cutoff, &out); err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
 	return out.String()

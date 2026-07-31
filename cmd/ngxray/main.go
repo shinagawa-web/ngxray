@@ -110,8 +110,12 @@ func runReport(args []string) {
 		}
 		defer f.Close()
 		fmt.Println("=== worker generations ===")
-		if err := workers.Analyze(f, cutoff, os.Stdout); err != nil {
+		skipped, err := workers.Analyze(f, cutoff, os.Stdout)
+		if err != nil {
 			log.Fatalf("workers report: %v", err)
+		}
+		if skipped > 0 {
+			log.Printf("workers: skipped %d corrupt line(s)", skipped)
 		}
 	}
 }

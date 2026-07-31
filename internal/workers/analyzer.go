@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"time"
 )
 
@@ -18,7 +17,9 @@ import (
 // immediately starts a replacement. In stable production environments this is
 // rare; when it occurs the surviving workers will be reported as "old" until
 // they naturally drain or the next real reload clears the state.
-func Analyze(r io.Reader, cutoff time.Time, out io.Writer) error {
+// Analyze reads workers_snapshot NDJSON from r and returns the number of lines
+// skipped due to parse errors. Callers can log or surface this count as needed.
+func Analyze(r io.Reader, cutoff time.Time, out io.Writer) (skipped int, err error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1MB: handles hosts with many workers
 
@@ -29,7 +30,7 @@ func Analyze(r io.Reader, cutoff time.Time, out io.Writer) error {
 	for scanner.Scan() {
 		var s Snapshot
 		if err := json.Unmarshal(scanner.Bytes(), &s); err != nil {
-			log.Printf("workers: skipping corrupt line: %v", err)
+			skipped++
 			continue
 		}
 		if s.Event != "workers_snapshot" {
@@ -85,5 +86,5 @@ func Analyze(r io.Reader, cutoff time.Time, out io.Writer) error {
 
 		prev = current
 	}
-	return scanner.Err()
+	return skipped, scanner.Err()
 }
