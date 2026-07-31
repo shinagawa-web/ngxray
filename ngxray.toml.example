@@ -1,5 +1,13 @@
+[report]
+days = 1   # look back this many days; must be > 0
+
 [workers]
 enabled  = true
 pid_file = "/var/run/nginx.pid"
 interval = 60   # seconds between snapshots
 output   = "/var/log/ngxray/workers.ndjson"
+
+[fd]
+enabled  = true
+interval = 60   # seconds between snapshots
+output   = "/var/log/ngxray/fd.ndjson"

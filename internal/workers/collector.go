@@ -23,15 +23,15 @@ type Collector struct {
 
 // Collect takes one snapshot and writes a single NDJSON line.
 func (c *Collector) Collect() error {
-	masterPID, err := readMasterPID(c.PIDFile)
+	masterPID, err := ReadMasterPID(c.PIDFile)
 	if err != nil {
 		return err
 	}
-	bootTime, err := readBootTime(c.ProcRoot)
+	bootTime, err := ReadBootTime(c.ProcRoot)
 	if err != nil {
 		return err
 	}
-	workers, err := enumerateWorkers(c.ProcRoot, masterPID, bootTime, tickDuration)
+	workers, err := EnumerateWorkers(c.ProcRoot, masterPID, bootTime, TickDuration)
 	if err != nil {
 		return err
 	}

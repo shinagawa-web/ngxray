@@ -3,6 +3,7 @@ package workers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -90,7 +91,7 @@ func TestEnumerateWorkers(t *testing.T) {
 	}
 	procRoot := buildProcFixture(t, 1000, []int{1001, 1002}, bootSec, ticks)
 
-	workers, err := enumerateWorkers(procRoot, 1000, bootTime, 10*time.Millisecond)
+	workers, err := EnumerateWorkers(procRoot, 1000, bootTime, 10*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,5 +192,222 @@ func TestAnalyzeReload(t *testing.T) {
 	}
 	if !strings.Contains(result, "all old workers gone") || !strings.Contains(result, "drain took") {
 		t.Errorf("expected drain confirmation, got:\n%s", result)
+	}
+}
+
+// --- ReadBootTime error paths ---
+
+func TestReadBootTime_FileNotFound(t *testing.T) {
+	_, err := ReadBootTime("/nonexistent/proc")
+	if err == nil {
+		t.Error("expected error for missing stat file")
+	}
+}
+
+func TestReadBootTime_BadBtime(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "stat"), []byte("btime notanumber\n"), 0644)
+	_, err := ReadBootTime(root)
+	if err == nil {
+		t.Error("expected error for non-numeric btime")
+	}
+}
+
+func TestReadBootTime_NoBtimeLine(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "stat"), []byte("cpu 0 0 0 0\n"), 0644)
+	_, err := ReadBootTime(root)
+	if err == nil {
+		t.Error("expected error when btime absent")
+	}
+}
+
+// --- ReadMasterPID error paths ---
+
+func TestReadMasterPID_FileNotFound(t *testing.T) {
+	_, err := ReadMasterPID("/nonexistent/nginx.pid")
+	if err == nil {
+		t.Error("expected error for missing pid file")
+	}
+}
+
+func TestReadMasterPID_BadContent(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "nginx.pid")
+	os.WriteFile(f, []byte("notanumber\n"), 0644)
+	_, err := ReadMasterPID(f)
+	if err == nil {
+		t.Error("expected error for non-numeric pid content")
+	}
+}
+
+// --- EnumerateWorkers error paths ---
+
+func TestEnumerateWorkers_ReadDirError(t *testing.T) {
+	_, err := EnumerateWorkers("/nonexistent/proc", 1, time.Now(), 10*time.Millisecond)
+	if err == nil {
+		t.Error("expected error for missing procRoot")
+	}
+}
+
+func TestEnumerateWorkers_NonNumericDir(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "notapid"), 0755)
+	bootSec := int64(7_000_000)
+	bootTime := time.Unix(bootSec, 0)
+	writeStat(t, root, 7000, 1, 50)
+	writeStat(t, root, 7001, 7000, 100)
+
+	ws, err := EnumerateWorkers(root, 7000, bootTime, 10*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ws) != 1 || ws[0].PID != 7001 {
+		t.Errorf("expected only worker 7001, got %+v", ws)
+	}
+}
+
+func TestEnumerateWorkers_StatReadError(t *testing.T) {
+	root := t.TempDir()
+	// pid dir exists but no stat file → readStat returns error → skip
+	os.MkdirAll(filepath.Join(root, "8001"), 0755)
+	ws, err := EnumerateWorkers(root, 8000, time.Now(), 10*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ws) != 0 {
+		t.Errorf("expected no workers, got %+v", ws)
+	}
+}
+
+// --- readStat error paths ---
+
+func TestReadStat_MissingFile(t *testing.T) {
+	_, _, err := readStat(t.TempDir(), 9999)
+	if err == nil {
+		t.Error("expected error for missing stat file")
+	}
+}
+
+func TestReadStat_NoCloseParen(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "42")
+	os.MkdirAll(dir, 0755)
+	os.WriteFile(filepath.Join(dir, "stat"), []byte("42 (nginx S 1\n"), 0644)
+	_, _, err := readStat(root, 42)
+	if err == nil {
+		t.Error("expected error for stat with no closing paren")
+	}
+}
+
+func TestReadStat_TooFewFields(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "43")
+	os.MkdirAll(dir, 0755)
+	// Only state+ppid after ')': 2 fields, need ≥20
+	os.WriteFile(filepath.Join(dir, "stat"), []byte("43 (nginx) S 1\n"), 0644)
+	_, _, err := readStat(root, 43)
+	if err == nil {
+		t.Error("expected error for too few stat fields")
+	}
+}
+
+func TestReadStat_BadPPID(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "44")
+	os.MkdirAll(dir, 0755)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "44 (nginx) S notanumber")
+	for i := 0; i < 18; i++ {
+		sb.WriteString(" 0")
+	}
+	sb.WriteString(" 500\n")
+	os.WriteFile(filepath.Join(dir, "stat"), []byte(sb.String()), 0644)
+	_, _, err := readStat(root, 44)
+	if err == nil {
+		t.Error("expected error for bad ppid")
+	}
+}
+
+func TestReadStat_BadStarttime(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "45")
+	os.MkdirAll(dir, 0755)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "45 (nginx) S 1")
+	for i := 0; i < 17; i++ {
+		sb.WriteString(" 0")
+	}
+	sb.WriteString(" notanumber\n")
+	os.WriteFile(filepath.Join(dir, "stat"), []byte(sb.String()), 0644)
+	_, _, err := readStat(root, 45)
+	if err == nil {
+		t.Error("expected error for bad starttime")
+	}
+}
+
+// --- workers.Collector error paths ---
+
+type failWriter struct{ err error }
+
+func (fw *failWriter) Write(p []byte) (int, error) { return 0, fw.err }
+
+func TestWorkerCollect_MasterPIDError(t *testing.T) {
+	c := &Collector{ProcRoot: t.TempDir(), PIDFile: "/nonexistent.pid"}
+	if err := c.Collect(); err == nil {
+		t.Error("expected error for missing pid file")
+	}
+}
+
+func TestWorkerCollect_BootTimeError(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "nginx.pid")
+	os.WriteFile(pidFile, []byte("1000\n"), 0644)
+	c := &Collector{ProcRoot: "/nonexistent/proc", PIDFile: pidFile}
+	if err := c.Collect(); err == nil {
+		t.Error("expected error for missing procRoot/stat")
+	}
+}
+
+func TestWorkerCollect_EnumerateWorkersError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("cannot test directory permissions as root")
+	}
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "stat"), []byte("btime 1000000\n"), 0644)
+	pidFile := filepath.Join(t.TempDir(), "nginx.pid")
+	os.WriteFile(pidFile, []byte("1000\n"), 0644)
+
+	// 0111 = execute only: ReadBootTime can open known file, ReadDir cannot list
+	if err := os.Chmod(root, 0111); err != nil {
+		t.Skip("cannot chmod test directory")
+	}
+	defer os.Chmod(root, 0755)
+
+	c := &Collector{ProcRoot: root, PIDFile: pidFile}
+	if err := c.Collect(); err == nil {
+		t.Error("expected error for unlistable procRoot")
+	}
+}
+
+func TestWorkerCollect_EncodeError(t *testing.T) {
+	bootSec := int64(9_000_000)
+	ticks := map[int]uint64{9000: 10, 9001: 20}
+	procRoot := buildProcFixture(t, 9000, []int{9001}, bootSec, ticks)
+	pidFile := filepath.Join(t.TempDir(), "nginx.pid")
+	os.WriteFile(pidFile, []byte("9000\n"), 0644)
+
+	c := &Collector{ProcRoot: procRoot, PIDFile: pidFile, Out: &failWriter{err: errors.New("disk full")}}
+	if err := c.Collect(); err == nil {
+		t.Error("expected error for failing writer")
+	}
+}
+
+func TestReadBootTime_ScannerError(t *testing.T) {
+	root := t.TempDir()
+	// A line longer than bufio.MaxScanTokenSize (64KB) triggers scanner.Err() = bufio.ErrTooLong
+	longLine := strings.Repeat("x", 64*1024+1) + "\n"
+	os.WriteFile(filepath.Join(root, "stat"), []byte(longLine), 0644)
+	_, err := ReadBootTime(root)
+	if err == nil {
+		t.Error("expected scanner error for oversized line")
 	}
 }

@@ -16,8 +16,8 @@ import (
 // always expressed in USER_HZ ticks, which Linux fixes at 100.
 const userHZ = 100
 
-// tickDuration is the wall-clock duration of one USER_HZ tick.
-const tickDuration = time.Second / userHZ
+// TickDuration is the wall-clock duration of one USER_HZ tick.
+const TickDuration = time.Second / userHZ
 
 // Worker is a single nginx worker process with its start time.
 type Worker struct {
@@ -25,8 +25,8 @@ type Worker struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
-// readBootTime reads the system boot time from $procRoot/stat.
-func readBootTime(procRoot string) (time.Time, error) {
+// ReadBootTime reads the system boot time from $procRoot/stat.
+func ReadBootTime(procRoot string) (time.Time, error) {
 	f, err := os.Open(filepath.Join(procRoot, "stat"))
 	if err != nil {
 		return time.Time{}, err
@@ -49,8 +49,8 @@ func readBootTime(procRoot string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("btime not found in %s/stat", procRoot)
 }
 
-// readMasterPID reads the nginx master PID from a pid file.
-func readMasterPID(pidFile string) (int, error) {
+// ReadMasterPID reads the nginx master PID from a pid file.
+func ReadMasterPID(pidFile string) (int, error) {
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
 		return 0, fmt.Errorf("read pid file %s: %w", pidFile, err)
@@ -62,10 +62,10 @@ func readMasterPID(pidFile string) (int, error) {
 	return pid, nil
 }
 
-// enumerateWorkers returns all processes under procRoot whose PPID matches masterPID.
-// tick is the duration of one USER_HZ tick; pass tickDuration in production and
+// EnumerateWorkers returns all processes under procRoot whose PPID matches masterPID.
+// tick is the duration of one USER_HZ tick; pass TickDuration in production and
 // 10*time.Millisecond in tests to keep assertions independent of host clock config.
-func enumerateWorkers(procRoot string, masterPID int, bootTime time.Time, tick time.Duration) ([]Worker, error) {
+func EnumerateWorkers(procRoot string, masterPID int, bootTime time.Time, tick time.Duration) ([]Worker, error) {
 	entries, err := os.ReadDir(procRoot)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", procRoot, err)

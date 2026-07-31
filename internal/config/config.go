@@ -7,6 +7,7 @@ import (
 type Config struct {
 	Report  ReportConfig  `toml:"report"`
 	Workers WorkersConfig `toml:"workers"`
+	FD      FDConfig      `toml:"fd"`
 }
 
 type ReportConfig struct {
@@ -16,6 +17,12 @@ type ReportConfig struct {
 type WorkersConfig struct {
 	Enabled  bool   `toml:"enabled"`
 	PIDFile  string `toml:"pid_file"`
+	Interval int    `toml:"interval"` // seconds
+	Output   string `toml:"output"`
+}
+
+type FDConfig struct {
+	Enabled  bool   `toml:"enabled"`
 	Interval int    `toml:"interval"` // seconds
 	Output   string `toml:"output"`
 }
@@ -30,6 +37,11 @@ func defaults() Config {
 			PIDFile:  "/var/run/nginx.pid",
 			Interval: 60,
 			Output:   "/var/log/ngxray/workers.ndjson",
+		},
+		FD: FDConfig{
+			Enabled:  true,
+			Interval: 60,
+			Output:   "/var/log/ngxray/fd.ndjson",
 		},
 	}
 }
