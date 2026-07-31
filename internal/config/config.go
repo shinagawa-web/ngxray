@@ -23,7 +23,7 @@ type WorkersConfig struct {
 func defaults() Config {
 	return Config{
 		Report: ReportConfig{
-			Days: 0,
+			Days: 1,
 		},
 		Workers: WorkersConfig{
 			Enabled:  true,

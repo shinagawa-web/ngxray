@@ -33,6 +33,9 @@ func TestLoadPartialConfigUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+	if cfg.Report.Days != 1 {
+		t.Errorf("report.days: got %d, want default 1", cfg.Report.Days)
+	}
 	w := cfg.Workers
 	// interval is overridden
 	if w.Interval != 120 {
