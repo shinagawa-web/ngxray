@@ -1,0 +1,4 @@
+{"ts":"2025-06-01T00:00:00Z","event":"workers_snapshot","workers":[{"pid":10,"started_at":"2025-06-01T00:00:00Z"},{"pid":11,"started_at":"2025-06-01T00:00:00Z"}]}
+{"ts":"2026-01-01T00:00:00Z","event":"workers_snapshot","workers":[{"pid":10,"started_at":"2025-06-01T00:00:00Z"},{"pid":11,"started_at":"2025-06-01T00:00:00Z"}]}
+{"ts":"2026-01-01T00:01:00Z","event":"workers_snapshot","workers":[{"pid":20,"started_at":"2026-01-01T00:01:00Z"},{"pid":21,"started_at":"2026-01-01T00:01:00Z"}]}
+{"ts":"2026-01-01T00:02:00Z","event":"workers_snapshot","workers":[{"pid":20,"started_at":"2026-01-01T00:01:00Z"},{"pid":21,"started_at":"2026-01-01T00:01:00Z"}]}

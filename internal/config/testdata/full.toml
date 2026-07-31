@@ -1,0 +1,8 @@
+[report]
+days = 14
+
+[workers]
+enabled  = true
+pid_file = "/run/nginx.pid"
+interval = 30
+output   = "/tmp/workers.ndjson"

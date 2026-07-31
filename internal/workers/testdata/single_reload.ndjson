@@ -1,0 +1,3 @@
+{"ts":"2026-01-01T00:00:00Z","event":"workers_snapshot","workers":[{"pid":100,"started_at":"2026-01-01T00:00:00Z"},{"pid":101,"started_at":"2026-01-01T00:00:00Z"}]}
+{"ts":"2026-01-01T00:01:00Z","event":"workers_snapshot","workers":[{"pid":102,"started_at":"2026-01-01T00:01:00Z"},{"pid":103,"started_at":"2026-01-01T00:01:00Z"}]}
+{"ts":"2026-01-01T00:02:00Z","event":"workers_snapshot","workers":[{"pid":102,"started_at":"2026-01-01T00:01:00Z"},{"pid":103,"started_at":"2026-01-01T00:01:00Z"}]}
