@@ -63,7 +63,7 @@ func ReadMasterPID(pidFile string) (int, error) {
 }
 
 // EnumerateWorkers returns all processes under procRoot whose PPID matches masterPID.
-// tick is the duration of one USER_HZ tick; pass tickDuration in production and
+// tick is the duration of one USER_HZ tick; pass TickDuration in production and
 // 10*time.Millisecond in tests to keep assertions independent of host clock config.
 func EnumerateWorkers(procRoot string, masterPID int, bootTime time.Time, tick time.Duration) ([]Worker, error) {
 	entries, err := os.ReadDir(procRoot)

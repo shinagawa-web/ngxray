@@ -96,8 +96,8 @@ func Analyze(r io.Reader, cutoff time.Time, out io.Writer) (skipped int, err err
 	return skipped, nil
 }
 
-// fdRate returns the rate of FD growth in FDs/min using linear regression over
-// the snapshot series. Returns 0 if fewer than 2 snapshots are available.
+// fdRate returns the rate of FD growth in FDs/min as a slope between the first
+// and last snapshots. Returns 0 if fewer than 2 snapshots are available.
 func fdRate(snaps []Snapshot) float64 {
 	if len(snaps) < 2 {
 		return 0

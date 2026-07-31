@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -50,12 +51,27 @@ func runCollect(args []string) {
 		log.Fatalf("load config: %v", err)
 	}
 
+	if !cfg.Workers.Enabled && !cfg.FD.Enabled {
+		log.Println("all collection disabled")
+		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		cancel()
+	}()
 
 	var wg sync.WaitGroup
 
 	if cfg.Workers.Enabled {
+		if cfg.Workers.Interval <= 0 {
+			log.Fatalf("workers.interval must be > 0, got %d", cfg.Workers.Interval)
+		}
 		out, err := openAppend(cfg.Workers.Output)
 		if err != nil {
 			log.Fatalf("open output %s: %v", cfg.Workers.Output, err)
@@ -70,11 +86,14 @@ func runCollect(args []string) {
 		go func() {
 			defer wg.Done()
 			defer out.Close()
-			runCollector("workers", c.Collect, interval, sig)
+			runCollector(ctx, "workers", c.Collect, interval)
 		}()
 	}
 
 	if cfg.FD.Enabled {
+		if cfg.FD.Interval <= 0 {
+			log.Fatalf("fd.interval must be > 0, got %d", cfg.FD.Interval)
+		}
 		out, err := openAppend(cfg.FD.Output)
 		if err != nil {
 			log.Fatalf("open output %s: %v", cfg.FD.Output, err)
@@ -89,20 +108,15 @@ func runCollect(args []string) {
 		go func() {
 			defer wg.Done()
 			defer out.Close()
-			runCollector("fd", c.Collect, interval, sig)
+			runCollector(ctx, "fd", c.Collect, interval)
 		}()
-	}
-
-	if !cfg.Workers.Enabled && !cfg.FD.Enabled {
-		log.Println("all collection disabled")
-		return
 	}
 
 	wg.Wait()
 }
 
-// runCollector runs collectFn once immediately, then on each tick, until sig.
-func runCollector(name string, collectFn func() error, interval time.Duration, sig <-chan os.Signal) {
+// runCollector runs collectFn once immediately, then on each tick, until ctx is cancelled.
+func runCollector(ctx context.Context, name string, collectFn func() error, interval time.Duration) {
 	if err := collectFn(); err != nil {
 		log.Printf("%s collect: %v", name, err)
 	}
@@ -114,7 +128,7 @@ func runCollector(name string, collectFn func() error, interval time.Duration, s
 			if err := collectFn(); err != nil {
 				log.Printf("%s collect: %v", name, err)
 			}
-		case <-sig:
+		case <-ctx.Done():
 			return
 		}
 	}

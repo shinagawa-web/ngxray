@@ -2,8 +2,10 @@ package fd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/shinagawa-web/ngxray/internal/workers"
@@ -49,8 +51,11 @@ func (c *Collector) Collect() error {
 	for _, w := range ws {
 		counts, err := ReadCounts(c.ProcRoot, w.PID)
 		if err != nil {
-			// Worker may have exited between enumeration and FD read
-			continue
+			// Ignore ESRCH/ENOENT: worker exited between enumeration and FD read
+			if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrProcessDone) {
+				continue
+			}
+			return fmt.Errorf("read counts pid %d: %w", w.PID, err)
 		}
 		snap := Snapshot{
 			Ts:              now,
