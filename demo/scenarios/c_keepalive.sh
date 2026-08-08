@@ -1,7 +1,7 @@
 #!/bin/bash
 # Scenario C: upstream keepalive reuse
-# Run twice: once without keepalive (connect count ≈ requests), once with.
-# Edit nginx.conf upstream block between runs to add/remove keepalive.
+# Expected without keepalive: connect count ≈ request count (20)
+# Expected with keepalive:    connect count << request count (1-4)
 set -e
 cd "$(dirname "$0")/.."
 
@@ -23,7 +23,25 @@ python3 summarize_nginx.py
 
 echo ""
 echo "-------"
-echo "Now add 'keepalive 4;' to the upstream block in demo/nginx.conf, then press Enter."
+cat <<'HINT'
+Edit demo/nginx.conf: replace the upstream block with:
+
+    upstream backend {
+        server 127.0.0.1:8080;
+        keepalive 4;
+    }
+
+    server {
+        listen 80;
+        location / {
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+    }
+
+Then press Enter.
+HINT
 read -r
 
 make reload

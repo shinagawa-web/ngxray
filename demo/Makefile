@@ -13,6 +13,8 @@ down:
 	docker compose down
 
 reload:
+	docker compose exec -T $(CONTAINER) bash -c 'cat > /etc/nginx/nginx.conf' < nginx.conf
+	$(EXEC) nginx -t
 	$(EXEC) nginx -s reload
 
 traffic:

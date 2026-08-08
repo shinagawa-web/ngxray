@@ -7,6 +7,7 @@ DELAY_FILE = pathlib.Path("/tmp/backend_delay")
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
     def do_GET(self):
         try:
             delay = float(DELAY_FILE.read_text())
