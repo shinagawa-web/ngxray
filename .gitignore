@@ -1,3 +1,5 @@
 /ngxray
 *.ndjson
 !**/testdata/*.ndjson
+demo/logs/*
+!demo/logs/.gitkeep

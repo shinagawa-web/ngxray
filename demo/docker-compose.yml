@@ -1,0 +1,12 @@
+services:
+  ngxray-demo:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile
+    privileged: true
+    pid: "host"
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./logs:/logs

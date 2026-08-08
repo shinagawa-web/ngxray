@@ -1,0 +1,19 @@
+[report]
+days = 1
+
+[workers]
+enabled  = true
+pid_file = "/var/run/nginx.pid"
+interval = 5
+output   = "/logs/workers.ndjson"
+
+[fd]
+enabled  = true
+interval = 5
+output   = "/logs/fd.ndjson"
+
+[connect]
+enabled  = true
+pid_file = "/var/run/nginx.pid"
+interval = 5
+output   = "/logs/connect.ndjson"
