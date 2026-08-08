@@ -3,14 +3,28 @@
 
 Log format: '$remote_addr - [$time_local] "$request" $status ct=$upstream_connect_time rt=$upstream_response_time pid=$pid'
 """
+import math
 import re
 import sys
 from pathlib import Path
 
 LOG_FILE = Path(__file__).parent / "logs" / "access.log"
+# upstream_connect_time / upstream_response_time can be comma-separated lists on retries;
+# capture the full field value and take the last (final) numeric token.
 LINE_RE = re.compile(
-    r'"[^"]+" (?P<status>\d+) ct=(?P<ct>[\d.]+|-) rt=(?P<rt>[\d.]+|-)'
+    r'"[^"]+" (?P<status>\d+) ct=(?P<ct>[^\s]+) rt=(?P<rt>[^\s]+)'
 )
+
+
+def _last_numeric(field: str) -> float | None:
+    """Return the last numeric value from a potentially comma-separated field."""
+    for token in reversed(field.split(",")):
+        token = token.strip()
+        try:
+            return float(token)
+        except ValueError:
+            continue
+    return None
 
 
 def parse(path: Path) -> dict:
@@ -24,10 +38,12 @@ def parse(path: Path) -> dict:
             continue
         status = m.group("status")
         statuses[status] = statuses.get(status, 0) + 1
-        if m.group("ct") != "-":
-            ct_vals.append(float(m.group("ct")))
-        if m.group("rt") != "-":
-            rt_vals.append(float(m.group("rt")))
+        ct = _last_numeric(m.group("ct"))
+        if ct is not None:
+            ct_vals.append(ct)
+        rt = _last_numeric(m.group("rt"))
+        if rt is not None:
+            rt_vals.append(rt)
 
     return {"statuses": statuses, "ct": ct_vals, "rt": rt_vals}
 
@@ -36,7 +52,7 @@ def p99(vals: list[float]) -> float:
     if not vals:
         return 0.0
     s = sorted(vals)
-    idx = max(0, int(len(s) * 0.99) - 1)
+    idx = min(math.ceil(len(s) * 0.99) - 1, len(s) - 1)
     return s[idx]
 
 

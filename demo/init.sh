@@ -11,7 +11,5 @@ echo "==> Starting backend (port 8080)..."
 python3 /backend.py &
 
 echo "==> Starting nginx..."
-nginx
-
 echo "Ready. Use 'make' targets or scenario scripts to run experiments."
-tail -f /dev/null
+exec nginx -g "daemon off;"

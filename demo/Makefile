@@ -4,7 +4,7 @@ N          ?= 20
 SECONDS    ?= 0
 MS         ?= 100
 
-.PHONY: up down reload traffic report clear-logs start-collect stop-collect add-latency remove-latency
+.PHONY: up down reload traffic report clear-logs start-collect stop-collect delay add-latency remove-latency
 
 up:
 	docker compose up -d --build

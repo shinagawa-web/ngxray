@@ -1,4 +1,4 @@
-FROM golang:latest AS builder
+FROM golang:1.25 AS builder
 RUN apt-get update && apt-get install -y clang llvm libbpf-dev linux-libc-dev
 WORKDIR /src
 COPY . .
